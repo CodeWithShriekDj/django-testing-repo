@@ -47,6 +47,7 @@ class DatabaseFeatures(BaseDatabaseFeatures):
 
     supports_order_by_nulls_modifier = False
     order_by_nulls_first = True
+    supports_logical_xor = True
 
     @cached_property
     def minimum_database_version(self):
@@ -316,10 +317,9 @@ class DatabaseFeatures(BaseDatabaseFeatures):
 
     @cached_property
     def supports_index_column_ordering(self):
-        return (
-            not self.connection.mysql_is_mariadb
-            and self.connection.mysql_version >= (8, 0, 1)
-        )
+        if self.connection.mysql_is_mariadb:
+            return self.connection.mysql_version >= (10, 8)
+        return self.connection.mysql_version >= (8, 0, 1)
 
     @cached_property
     def supports_expression_indexes(self):

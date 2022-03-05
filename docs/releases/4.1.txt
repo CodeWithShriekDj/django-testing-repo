@@ -61,6 +61,8 @@ Minor features
 * The admin :meth:`history view <django.contrib.admin.ModelAdmin.history_view>`
   is now paginated.
 
+* Related widget wrappers now have a link to object's change form.
+
 :mod:`django.contrib.admindocs`
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -270,6 +272,11 @@ Models
 * :meth:`.QuerySet.iterator` now supports prefetching related objects as long
   as the ``chunk_size`` argument is provided. In older versions, no prefetching
   was done.
+
+* :class:`~django.db.models.Q` objects and querysets can now be combined using
+  ``^`` as the exclusive or (``XOR``) operator. ``XOR`` is natively supported
+  on MariaDB and MySQL. For databases that do not support ``XOR``, the query
+  will be converted to an equivalent using ``AND``, ``OR``, and ``NOT``.
 
 Requests and Responses
 ~~~~~~~~~~~~~~~~~~~~~~
@@ -481,6 +488,9 @@ Miscellaneous
   objects without providing the ``chunk_size`` argument is deprecated. In older
   versions, no prefetching was done. Providing a value for ``chunk_size``
   signifies that the additional query per chunk needed to prefetch is desired.
+
+* Passing unsaved model instances to related filters is deprecated. In Django
+  5.0, the exception will be raised.
 
 Features removed in 4.1
 =======================

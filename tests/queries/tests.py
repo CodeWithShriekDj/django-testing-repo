@@ -12,7 +12,8 @@ from django.db.models.expressions import RawSQL
 from django.db.models.sql.constants import LOUTER
 from django.db.models.sql.where import NothingNode, WhereNode
 from django.test import SimpleTestCase, TestCase, skipUnlessDBFeature
-from django.test.utils import CaptureQueriesContext
+from django.test.utils import CaptureQueriesContext, ignore_warnings
+from django.utils.deprecation import RemovedInDjango50Warning
 
 from .models import (
     FK1,
@@ -1882,6 +1883,10 @@ class Queries5Tests(TestCase):
             Note.objects.exclude(~Q() & ~Q()),
             [self.n1, self.n2],
         )
+        self.assertSequenceEqual(
+            Note.objects.exclude(~Q() ^ ~Q()),
+            [self.n1, self.n2],
+        )
 
     def test_extra_select_literal_percent_s(self):
         # Allow %%s to escape select clauses
@@ -1898,6 +1903,19 @@ class Queries5Tests(TestCase):
         authors = Author.objects.filter(Q(name="a1") | Q(name="nonexistent"))
         self.assertEqual(Ranking.objects.filter(author__in=authors).get(), self.rank3)
         self.assertEqual(authors.count(), 1)
+
+    def test_filter_unsaved_object(self):
+        # These tests will catch ValueError in Django 5.0 when passing unsaved
+        # model instances to related filters becomes forbidden.
+        # msg = "Model instances passed to related filters must be saved."
+        msg = "Passing unsaved model instances to related filters is deprecated."
+        company = Company.objects.create(name="Django")
+        with self.assertWarnsMessage(RemovedInDjango50Warning, msg):
+            Employment.objects.filter(employer=Company(name="unsaved"))
+        with self.assertWarnsMessage(RemovedInDjango50Warning, msg):
+            Employment.objects.filter(employer__in=[company, Company(name="unsaved")])
+        with self.assertWarnsMessage(RemovedInDjango50Warning, msg):
+            StaffUser.objects.filter(staff=Staff(name="unsaved"))
 
 
 class SelectRelatedTests(TestCase):
@@ -2114,6 +2132,15 @@ class Queries6Tests(TestCase):
             )
         sql = captured_queries[0]["sql"]
         self.assertIn("AS %s" % connection.ops.quote_name("col1"), sql)
+
+    def test_xor_subquery(self):
+        self.assertSequenceEqual(
+            Tag.objects.filter(
+                Exists(Tag.objects.filter(id=OuterRef("id"), name="t3"))
+                ^ Exists(Tag.objects.filter(id=OuterRef("id"), parent=self.t1))
+            ),
+            [self.t2],
+        )
 
 
 class RawQueriesTests(TestCase):
@@ -2417,6 +2444,30 @@ class QuerySetBitwiseOperationTests(TestCase):
         qs1 = Classroom.objects.filter(has_blackboard=False).order_by("-pk")[:1]
         qs2 = Classroom.objects.filter(has_blackboard=True).order_by("-name")[:1]
         self.assertCountEqual(qs1 | qs2, [self.room_3, self.room_4])
+
+    @skipUnlessDBFeature("allow_sliced_subqueries_with_in")
+    def test_xor_with_rhs_slice(self):
+        qs1 = Classroom.objects.filter(has_blackboard=True)
+        qs2 = Classroom.objects.filter(has_blackboard=False)[:1]
+        self.assertCountEqual(qs1 ^ qs2, [self.room_1, self.room_2, self.room_3])
+
+    @skipUnlessDBFeature("allow_sliced_subqueries_with_in")
+    def test_xor_with_lhs_slice(self):
+        qs1 = Classroom.objects.filter(has_blackboard=True)[:1]
+        qs2 = Classroom.objects.filter(has_blackboard=False)
+        self.assertCountEqual(qs1 ^ qs2, [self.room_1, self.room_2, self.room_4])
+
+    @skipUnlessDBFeature("allow_sliced_subqueries_with_in")
+    def test_xor_with_both_slice(self):
+        qs1 = Classroom.objects.filter(has_blackboard=False)[:1]
+        qs2 = Classroom.objects.filter(has_blackboard=True)[:1]
+        self.assertCountEqual(qs1 ^ qs2, [self.room_1, self.room_2])
+
+    @skipUnlessDBFeature("allow_sliced_subqueries_with_in")
+    def test_xor_with_both_slice_and_ordering(self):
+        qs1 = Classroom.objects.filter(has_blackboard=False).order_by("-pk")[:1]
+        qs2 = Classroom.objects.filter(has_blackboard=True).order_by("-name")[:1]
+        self.assertCountEqual(qs1 ^ qs2, [self.room_3, self.room_4])
 
     def test_subquery_aliases(self):
         combined = School.objects.filter(pk__isnull=False) & School.objects.filter(
@@ -3211,6 +3262,7 @@ class ExcludeTests(TestCase):
             [self.j1, self.j2],
         )
 
+    @ignore_warnings(category=RemovedInDjango50Warning)
     def test_exclude_unsaved_o2o_object(self):
         jack = Staff.objects.create(name="jack")
         jack_staff = StaffUser.objects.create(staff=jack)
@@ -3220,6 +3272,19 @@ class ExcludeTests(TestCase):
         self.assertSequenceEqual(
             StaffUser.objects.exclude(staff=unsaved_object), [jack_staff]
         )
+
+    def test_exclude_unsaved_object(self):
+        # These tests will catch ValueError in Django 5.0 when passing unsaved
+        # model instances to related filters becomes forbidden.
+        # msg = "Model instances passed to related filters must be saved."
+        company = Company.objects.create(name="Django")
+        msg = "Passing unsaved model instances to related filters is deprecated."
+        with self.assertWarnsMessage(RemovedInDjango50Warning, msg):
+            Employment.objects.exclude(employer=Company(name="unsaved"))
+        with self.assertWarnsMessage(RemovedInDjango50Warning, msg):
+            Employment.objects.exclude(employer__in=[company, Company(name="unsaved")])
+        with self.assertWarnsMessage(RemovedInDjango50Warning, msg):
+            StaffUser.objects.exclude(staff=Staff(name="unsaved"))
 
 
 class ExcludeTest17600(TestCase):
